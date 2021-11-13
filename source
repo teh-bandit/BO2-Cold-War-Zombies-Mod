@@ -1,0 +1,641 @@
+#include common_scripts/utility;
+#include maps/mp/_demo;
+#include maps/mp/_utility;
+#include maps/mp/_visionset_mgr;
+#include maps/mp/gametypes_zm/_hud_util;
+#include maps/mp/gametypes_zm/_weapons;
+#include maps/mp/gametypes_zm/_zm_gametype;
+#include maps/mp/zombies/_zm;
+#include maps/mp/zombies/_zm_ai_basic;
+#include maps/mp/zombies/_zm_ai_dogs;
+#include maps/mp/zombies/_zm_audio;
+#include maps/mp/zombies/_zm_audio_announcer;
+#include maps/mp/zombies/_zm_blockers;
+#include maps/mp/zombies/_zm_bot;
+#include maps/mp/zombies/_zm_buildables;
+#include maps/mp/zombies/_zm_clone;
+#include maps/mp/zombies/_zm_devgui;
+#include maps/mp/zombies/_zm_equipment;
+#include maps/mp/zombies/_zm_ffotd;
+#include maps/mp/zombies/_zm_game_module;
+#include maps/mp/zombies/_zm_gump;
+#include maps/mp/zombies/_zm_laststand;
+#include maps/mp/zombies/_zm_magicbox;
+#include maps/mp/zombies/_zm_melee_weapon;
+#include maps/mp/zombies/_zm_perks;
+#include maps/mp/zombies/_zm_pers_upgrades;
+#include maps/mp/zombies/_zm_pers_upgrades_system;
+#include maps/mp/zombies/_zm_pers_upgrades_functions;
+#include maps/mp/zombies/_zm_playerhealth;
+#include maps/mp/zombies/_zm_powerups;
+#include maps/mp/zombies/_zm_power;
+#include maps/mp/zombies/_zm_score;
+#include maps/mp/zombies/_zm_sidequests;
+#include maps/mp/zombies/_zm_spawner;
+#include maps/mp/zombies/_zm_stats;
+#include maps/mp/zombies/_zm_timer;
+#include maps/mp/zombies/_zm_tombstone;
+#include maps/mp/zombies/_zm_traps;
+#include maps/mp/zombies/_zm_unitrigger;
+#include maps/mp/zombies/_zm_utility;
+#include maps/mp/zombies/_zm_weapons;
+#include maps/mp/zombies/_zm_zonemgr;
+
+init()
+{
+	setdvar("player_backSpeedScale", 1);
+	setdvar("player_strafeSpeedScale", 1);
+
+	precacheshader("damage_feedback");
+	precacheshader("menu_mp_fileshare_custom");
+	precacheshader("menu_mp_killstreak_select");
+	precacheshader("menu_mp_party_ease_icon");
+	
+	level.zombie_vars["zombie_spawn_delay"] = 0;
+	level.zombie_vars["slipgun_max_kill_round"] = 255;
+	level.slowgun_damage_ug = maps/mp/zombies/_zm::ai_zombie_health(255);
+	level.perk_purchase_limit = 9;
+	
+	level thread zombie_health();
+	level thread onPlayerConnect();
+}
+
+zombie_health()
+{
+	for(;;)
+	{
+		level waittill("start_of_round");
+		if(level.zombie_health > 10000)
+		{
+			level.zombie_health = 10000;
+		}
+	}
+}
+
+onPlayerConnect()
+{
+	for(;;)
+	{
+		level waittill("connected", player);
+
+		player thread onPlayerSpawned();
+	}
+}
+
+onPlayerSpawned()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	self.coldwar_spawn = 1;
+	for(;;)
+	{
+		self waittill("spawned_player");
+		self setperk("specialty_unlimitedsprint");
+		if (self.coldwar_spawn == 1)
+		{
+			self.coldwar_spawn = 0;
+			
+			if ((level.script == "zm_transit") || (level.script == "zm_highrise") || (level.script == "zm_buried"))
+			{
+				self thread aether_shroud();
+				self thread aether_shroud_hud();
+			}
+			else
+			{
+				self thread frenzied_guard();
+				self thread frenzied_guard_hud();
+			}
+			self thread damagehitmarker();
+			self thread maxammo();
+			self thread carpenter();
+			self thread drop_weapon();
+			self thread health_bar_hud();
+			self thread self_revive_hud();
+			self thread quickrevive();
+			self thread staminup();
+			self thread speedcola();
+			self thread mulekick_save_weapons();
+			self thread mulekick_restore_weapons();
+			self thread sliding();
+		}
+	}
+}
+
+aether_shroud()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for(;;)
+	{
+		if (self.kills >= 45 && self actionslotthreebuttonpressed())
+		{	
+			duration = 0;
+			for(;;)
+			{
+				duration += 1;
+				self setperk("specialty_noname");
+				self.ignoreme = 1;
+				self useservervisionset(1);
+				self setvisionsetforplayer("zombie_last_stand", 0);
+				if (duration >= 160)
+				{
+					self unsetperk("specialty_noname");
+					self.ignoreme = 0;
+					self useservervisionset(0);
+					self.kills = 0;
+					break;
+				}
+				wait 0.05;
+			}
+		}
+		wait 0.05;
+	}
+}
+
+aether_shroud_hud()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	flag_wait("initial_blackscreen_passed");
+	
+	aether_shroud_hud = newClientHudElem(self);
+	aether_shroud_hud.alignx = "right";
+	aether_shroud_hud.aligny = "bottom";
+	aether_shroud_hud.horzalign = "user_right";
+	aether_shroud_hud.vertalign = "user_bottom";
+	aether_shroud_hud.x -= 155;
+	aether_shroud_hud.y -= 2;
+	aether_shroud_hud.alpha = 0;
+	aether_shroud_hud.color = ( 1, 1, 1 );
+	aether_shroud_hud.hidewheninmenu = 1;
+	aether_shroud_hud setShader("menu_mp_killstreak_select", 32, 32);
+	
+	for(;;)
+	{
+		if (self.kills >= 45)
+		{	
+			aether_shroud_hud.alpha = 1;
+		}
+		else 
+		{
+			aether_shroud_hud.alpha = 0.5;
+		}
+		wait 0.05;
+	}
+}
+
+frenzied_guard()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for(;;)
+	{
+		if (self.kills >= 60 && self actionslotthreebuttonpressed())
+		{	
+			duration = 0;
+			for(;;)
+			{
+				duration += 1;
+				self EnableInvulnerability();
+				self useservervisionset(1);
+				self setvisionsetforplayer("zombie_death", 0);
+				if (duration >= 300)
+				{
+					self DisableInvulnerability();
+					self useservervisionset(0);
+					self.kills = 0;
+					break;
+				}
+				wait 0.05;
+			}
+		}
+		wait 0.05;
+	}
+}
+
+frenzied_guard_hud()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	flag_wait("initial_blackscreen_passed");
+	
+	frenzied_guard_hud = newClientHudElem(self);
+	frenzied_guard_hud.alignx = "right";
+	frenzied_guard_hud.aligny = "bottom";
+	frenzied_guard_hud.horzalign = "user_right";
+	frenzied_guard_hud.vertalign = "user_bottom";
+	frenzied_guard_hud.x -= 155;
+	frenzied_guard_hud.y -= 2;
+	frenzied_guard_hud.alpha = 0;
+	frenzied_guard_hud.color = ( 1, 1, 1 );
+	frenzied_guard_hud.hidewheninmenu = 1;
+	frenzied_guard_hud setShader("menu_mp_fileshare_custom", 32, 32);
+	
+	for(;;)
+	{
+		if (self.kills >= 60)
+		{	
+			frenzied_guard_hud.alpha = 1;
+		}
+		else 
+		{
+			frenzied_guard_hud.alpha = 0.5;
+		}
+		wait 0.05;
+	}
+}
+
+damagehitmarker()
+{
+    self thread startwaiting();
+    self.hitmarker = newdamageindicatorhudelem( self );
+    self.hitmarker.horzalign = "center";
+    self.hitmarker.vertalign = "middle";
+    self.hitmarker.x = -12;
+    self.hitmarker.y = -12;
+    self.hitmarker.alpha = 0;
+    self.hitmarker setshader( "damage_feedback", 24, 48 );
+}
+
+startwaiting()
+{
+    for(;;)
+    {
+        foreach( zombie in getaiarray( level.zombie_team ) )
+        {
+            if( !(IsDefined( zombie.waitingfordamage )) )
+            {
+                zombie thread hitmark();
+            }
+        }
+        wait 0.25;
+    }
+}
+
+hitmark()
+{
+    self endon( "killed" );
+    self.waitingfordamage = 1;
+    for(;;)
+    {
+        self waittill( "damage", amount, attacker, dir, point, mod );
+        attacker.hitmarker.alpha = 0;
+        if( isplayer( attacker ) )
+        {
+            if( isalive( self ) )
+            {
+                attacker.hitmarker.color = ( 1, 1, 1 );
+                attacker.hitmarker.alpha = 1;
+                attacker.hitmarker fadeovertime( 1 );
+                attacker.hitmarker.alpha = 0;
+            }
+            else
+            {
+                attacker.hitmarker.color = ( 1, 0, 0 );
+                attacker.hitmarker.alpha = 1;
+                attacker.hitmarker fadeovertime( 1 );
+                attacker.hitmarker.alpha = 0;
+                self notify( "killed" );
+            }
+        }
+    }
+}
+
+maxammo()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for(;;) 
+	{
+		self waittill("zmb_max_ammo");
+		weaps = self getweaponslist(1);
+		foreach (weap in weaps) 
+		{
+			self setweaponammoclip(weap, weaponclipsize(weap));
+		}
+	}
+}
+
+carpenter()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for(;;)
+	{
+		level waittill( "carpenter_finished" );
+		self.shielddamagetaken = 0;
+	}
+}
+
+drop_weapon()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for (;;) 
+	{
+		if (self meleebuttonpressed()) 
+		{
+			duration = 0;
+			while (self meleebuttonpressed()) 
+			{
+				duration += 1;
+				if (duration == 25) 
+				{
+					weap = self getCurrentWeapon();
+					self dropItem(weap);
+					break;
+				}
+				wait 0.05;
+			}
+		}
+		wait 0.05;
+	}
+}
+
+health_bar_hud()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	flag_wait("initial_blackscreen_passed");
+
+	health_bar = self createprimaryprogressbar();
+	if (level.script == "zm_buried")
+	{
+		health_bar setpoint(undefined, "BOTTOM", -335, -95);
+	}
+	else if (level.script == "zm_tomb")
+	{
+		health_bar setpoint(undefined, "BOTTOM", -335, -100);
+	}
+	else
+	{
+		health_bar setpoint(undefined, "BOTTOM", -335, -70);
+	}
+	health_bar.hidewheninmenu = 1;
+	health_bar.bar.hidewheninmenu = 1;
+	health_bar.barframe.hidewheninmenu = 1;
+
+	health_bar_text = self createprimaryprogressbartext();
+	if (level.script == "zm_buried")
+	{
+		health_bar_text setpoint(undefined, "BOTTOM", -410, -95);
+	}
+	else if (level.script == "zm_tomb")
+	{
+		health_bar_text setpoint(undefined, "BOTTOM", -410, -100);
+	}
+	else
+	{
+		health_bar_text setpoint(undefined, "BOTTOM", -410, -70);
+	}
+	health_bar_text.hidewheninmenu = 1;
+
+	while (1)
+	{
+		if (isDefined(self.e_afterlife_corpse))
+		{
+			if (health_bar.alpha != 0)
+			{
+				health_bar.alpha = 0;
+				health_bar.bar.alpha = 0;
+				health_bar.barframe.alpha = 0;
+				health_bar_text.alpha = 0;
+			}
+			
+			wait 0.05;
+			continue;
+		}
+
+		if (health_bar.alpha != 1)
+		{
+			health_bar.alpha = 1;
+			health_bar.bar.alpha = 1;
+			health_bar.barframe.alpha = 1;
+			health_bar_text.alpha = 1;
+		}
+
+		health_bar updatebar(self.health / self.maxhealth);
+		health_bar_text setvalue(self.health);
+
+		wait 0.05;
+	}
+}
+
+self_revive_hud()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	flag_wait("initial_blackscreen_passed");
+	
+	self_revive_hud = newClientHudElem(self);
+	self_revive_hud.alignx = "left";
+	self_revive_hud.aligny = "bottom";
+	self_revive_hud.horzalign = "user_left";
+	self_revive_hud.vertalign = "user_bottom";
+	self_revive_hud.x += 155;
+	self_revive_hud.alpha = 0;
+	self_revive_hud.color = ( 1, 1, 1 );
+	self_revive_hud.hidewheninmenu = 1;
+	self_revive_hud setShader("menu_mp_party_ease_icon", 32, 32);
+	
+	self waittill_any("perk_acquired", "perk_lost");
+	for(;;)
+	{
+		if (self hasperk("specialty_quickrevive") && getPlayers().size <= 1)
+		{	
+
+			self_revive_hud.alpha = 1;
+		}
+		else 
+		{
+			self_revive_hud.alpha = 0;
+		}
+		wait 0.05;
+	}
+}
+
+quickrevive()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for (;;)
+	{
+		if (self hasperk("specialty_quickrevive") && self.health < self.maxHealth)
+		{
+			wait 2;
+			self.health = self.maxHealth;
+		}
+		wait 0.05;
+	}
+}
+
+staminup()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for (;;)
+	{
+		self waittill_any("perk_acquired", "perk_lost");
+	
+		if (self hasperk("specialty_longersprint"))
+		{
+			self setperk("specialty_movefaster");
+			self setperk("specialty_fallheight");
+			self setperk("specialty_stalker");
+		}
+		else
+		{
+			self unsetperk("specialty_movefaster");
+			self unsetperk("specialty_fallheight");
+			self unsetperk("specialty_stalker");
+		}
+	}
+}
+
+speedcola()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for (;;)
+	{
+		self waittill_any("perk_acquired", "perk_lost");
+	
+		if (self hasperk("specialty_fastreload"))
+		{
+			self setperk("specialty_fastweaponswitch");
+		}
+		else
+		{
+			self unsetperk("specialty_fastweaponswitch");
+		}
+	}
+}
+
+mulekick_save_weapons()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for (;;)
+	{
+		if (!self hasPerk("specialty_additionalprimaryweapon"))
+		{
+			self waittill("perk_acquired");
+			wait 0.05;
+		}
+
+		if (self hasPerk("specialty_additionalprimaryweapon"))
+		{
+			primaries = self getweaponslistprimaries();
+			if (primaries.size >= 3)
+			{
+				weapon = primaries[primaries.size - 1];
+				self.a_saved_weapon = maps/mp/zombies/_zm_weapons::get_player_weapondata(self, weapon);
+			}
+			else
+			{
+				self.a_saved_weapon = undefined;
+			}
+		}
+
+		wait 0.05;
+	}
+}
+
+mulekick_restore_weapons()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for (;;)
+	{
+		self waittill("perk_acquired");
+
+		if (isDefined(self.a_saved_weapon) && self hasPerk("specialty_additionalprimaryweapon"))
+		{
+			pap_triggers = getentarray( "specialty_weapupgrade", "script_noteworthy" );
+
+			give_wep = 1;
+			if ( isDefined( self ) && self maps/mp/zombies/_zm_weapons::has_weapon_or_upgrade( self.a_saved_weapon["name"] ) )
+			{
+				give_wep = 0;
+			}
+			else if ( !maps/mp/zombies/_zm_weapons::limited_weapon_below_quota( self.a_saved_weapon["name"], self, pap_triggers ) )
+			{
+				give_wep = 0;
+			}
+			else if ( !self maps/mp/zombies/_zm_weapons::player_can_use_content( self.a_saved_weapon["name"] ) )
+			{
+				give_wep = 0;
+			}
+			else if ( isDefined( level.custom_magic_box_selection_logic ) )
+			{
+				if ( !( [[ level.custom_magic_box_selection_logic ]]( self.a_saved_weapon["name"], self, pap_triggers ) ) )
+				{
+					give_wep = 0;
+				}
+			}
+			else if ( isDefined( self ) && isDefined( level.special_weapon_magicbox_check ) )
+			{
+				give_wep = self [[ level.special_weapon_magicbox_check ]]( self.a_saved_weapon["name"] );
+			}
+
+			if (give_wep)
+			{
+				current_wep = self getCurrentWeapon();
+				self maps/mp/zombies/_zm_weapons::weapondata_give(self.a_saved_weapon);
+				self switchToWeapon(current_wep);
+			}
+
+			self.a_saved_weapon = undefined;
+		}
+	}
+}
+
+sliding()
+{
+	level endon("end_game");
+	self endon("disconnect");
+	for(;;)
+	{
+		if(self stanceButtonPressed())
+		{
+			timer += 1;
+			if(timer == 3)
+			{
+				stance = self getstance();
+				if(self.player_is_moving == 1 && self isonground())
+				{
+					if (stance != "crouch" && stance != "prone")
+					{
+						if(self.is_sliding != 1)
+						{
+							self setstance( "crouch" );
+							self allowstand( 0 );
+							self allowcrouch( 1 );
+							self allowprone( 0 );
+							forward = anglesToForward(self getPlayerAngles());
+							self setOrigin(self.origin+(0,0,5));
+							self.is_sliding = 1;
+							for(i=0; i < 5; i++)
+							{
+								self setVelocity((forward[0]*450, forward[1]*450,0));
+								wait 0.01;
+							}
+							wait 0.1;
+							self.is_sliding = 0;
+							self allowstand( 1 );
+							self allowcrouch( 1 );
+							self allowprone( 1 );
+							self setstance("stand");
+							wait 0.05;
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			timer = 0;
+		}
+		wait 0.05;
+    }
+}
